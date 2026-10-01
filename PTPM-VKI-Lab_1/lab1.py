@@ -25,6 +25,7 @@ console_handler = logging.StreamHandler()
 console_handler.setFormatter(log_formatter)
 logger.addHandler(console_handler)
 
+
 # ==========================================
 # 2. РЕГУЛЯРНЫЕ ВЫРАЖЕНИЯ И КОНСТАНТЫ
 # ==========================================
@@ -48,7 +49,7 @@ BLACKLIST_LOGINS = {"admin", "root", "administrator", "moderator", "guest", "sup
 # ==========================================
 def mask_password(password: str) -> str:
     """
-    Маскирует пароль с помощью SHA-256 хеширования (Вариант 2).
+    Маскирует пароль с помощью SHA-256 хеширования.
     Возвращает одинаковый результат для одинаковых паролей и разный для отличающихся,
     не раскрывая исходный пароль в лог-файлах.
     """
@@ -68,88 +69,100 @@ def validate_user_registration(login: str, password: str, password_confirm: str)
     Выполняет комплексную валидацию учетных данных.
     Возвращает кортеж: (Результат: bool, Сообщение: str)
     """
-    # Маскируем пароли для безопасного сквозного логирования входных параметров
+    # Маскируем пароли для безопасного сквозного логирования
     masked_pwd = mask_password(password)
     masked_confirm = mask_password(password_confirm)
     
+    # DEBUG: Фиксируем начало процесса для отладки (безопасно, т.к. пароль замаскирован)
+    logger.debug(f"Начало валидации. Логин: '{login}', Пароль: {masked_pwd}")
+
     try:
         # --- ВАЛИДАЦИЯ ЛОГИНА ---
         if not login:
             error_msg = "Логин не может быть пустым."
-            logger.warning(f"Неуспешный запрос. Логин: '{login}', Пароль: {masked_pwd}. Ошибка: {error_msg}")
+            logger.error(f"Отказано в регистрации. Логин: '{login}'. Причина: {error_msg}")
             return False, error_msg
 
-        # Определение типа логина и его валидация согласно маскам
+        # Определение типа логина
         is_email = "@" in login
-        is_phone = login.startswith("+") or any(c.isdigit() for c in login if login.index(c) < 2)
+        is_phone = login.startswith("+")
 
         if is_email:
             if not EMAIL_REGEX.match(login):
-                error_msg = "Причина 1: Логин распознан как Email, но не соответствует стандартной маске."
-                logger.warning(f"Неуспешный запрос. Логин: '{login}', Пароль: {masked_pwd}. Ошибка: {error_msg}")
+                error_msg = "Логин распознан как Email, но не соответствует стандартной маске."
+                logger.error(f"Отказано в регистрации. Логин: '{login}'. Причина: {error_msg}")
                 return False, error_msg
-        elif is_phone or (len(login) > 0 and login == '+'):
+                
+        elif is_phone:
             if not PHONE_REGEX.match(login):
-                error_msg = "Причина 2: Логин распознан как телефон, но не соответствует маске +x-xxx-xxx-xxxx."
-                logger.warning(f"Неуспешный запрос. Логин: '{login}', Пароль: {masked_pwd}. Ошибка: {error_msg}")
+                error_msg = "Логин распознан как телефон, но не соответствует маске +x-xxx-xxx-xxxx."
+                logger.error(f"Отказано в регистрации. Логин: '{login}'. Причина: {error_msg}")
                 return False, error_msg
+                
         else:
             if not STRING_LOGIN_REGEX.match(login):
-                error_msg = "Причина 3: Логин-строка должен быть не менее 5 символов и содержать только латиницу, цифры и '_'."
-                logger.warning(f"Неуспешный запрос. Логин: '{login}', Пароль: {masked_pwd}. Ошибка: {error_msg}")
+                error_msg = "Логин должен быть не менее 5 символов и содержать только латиницу, цифры и '_'."
+                logger.error(f"Отказано в регистрации. Логин: '{login}'. Причина: {error_msg}")
                 return False, error_msg
 
         # Проверка по черному списку
         if login.lower() in BLACKLIST_LOGINS:
-            error_msg = "Причина 4: Указанный логин находится в предустановленном черном списке запрещенных имен."
-            logger.warning(f"Неуспешный запрос. Логин: '{login}', Пароль: {masked_pwd}. Ошибка: {error_msg}")
+            error_msg = "Указанный логин находится в черном списке запрещенных имен."
+            logger.error(f"Отказано в регистрации. Логин: '{login}'. Причина: {error_msg}")
             return False, error_msg
 
         # --- ВАЛИДАЦИЯ ПАРОЛЕЙ ---
         if password != password_confirm:
-            error_msg = "Причина 5: Пароль и подтверждение пароля не совпадают."
-            logger.warning(f"Неуспешный запрос. Логин: '{login}', Пароль: {masked_pwd}, Подтверждение: {masked_confirm}. Ошибка: {error_msg}")
+            error_msg = "Пароль и подтверждение пароля не совпадают."
+            logger.error(f"Отказано в регистрации. Логин: '{login}'. Причина: {error_msg}")
             return False, error_msg
 
         if len(password) < 7:
-            error_msg = "Причина 6: Пароль слишком короткий (минимальная длина — 7 символов)."
-            logger.warning(f"Неуспешный запрос. Логин: '{login}', Пароль: {masked_pwd}. Ошибка: {error_msg}")
+            error_msg = "Пароль слишком короткий (минимальная длина — 7 символов)."
+            logger.error(f"Отказано в регистрации. Логин: '{login}'. Причина: {error_msg}")
             return False, error_msg
 
         if not ALLOWED_PASSWORD_CHARS.match(password):
-            error_msg = "Причина 7: Пароль содержит запрещенные символы. Разрешены только кириллица, цифры и спецсимволы."
-            logger.warning(f"Неуспешный запрос. Логин: '{login}', Пароль: {masked_pwd}. Ошибка: {error_msg}")
+            error_msg = "Пароль содержит запрещенные символы. Разрешены только кириллица, цифры и спецсимволы."
+            logger.error(f"Отказано в регистрации. Логин: '{login}'. Причина: {error_msg}")
             return False, error_msg
 
         if not CYRILLIC_UPPER.search(password):
-            error_msg = "Причина 8: Пароль должен содержать минимум одну заглавную букву на кириллице."
-            logger.warning(f"Неуспешный запрос. Логин: '{login}', Пароль: {masked_pwd}. Ошибка: {error_msg}")
+            error_msg = "Пароль должен содержать минимум одну заглавную букву кириллицы."
+            logger.error(f"Отказано в регистрации. Логин: '{login}'. Причина: {error_msg}")
             return False, error_msg
 
         if not CYRILLIC_LOWER.search(password):
-            error_msg = "Причина 9: Пароль должен содержать минимум одну строчную букву на кириллице."
-            logger.warning(f"Неуспешный запрос. Логин: '{login}', Пароль: {masked_pwd}. Ошибка: {error_msg}")
+            error_msg = "Пароль должен содержать минимум одну строчную букву кириллицы."
+            logger.error(f"Отказано в регистрации. Логин: '{login}'. Причина: {error_msg}")
             return False, error_msg
 
         if not DIGIT.search(password):
-            error_msg = "Причина 10: Пароль должен содержать минимум одну цифру."
-            logger.warning(f"Неуспешный запрос. Логин: '{login}', Пароль: {masked_pwd}. Ошибка: {error_msg}")
+            error_msg = "Пароль должен содержать минимум одну цифру."
+            logger.error(f"Отказано в регистрации. Логин: '{login}'. Причина: {error_msg}")
             return False, error_msg
 
         if not SPECIAL_CHAR.search(password):
-            error_msg = "Причина 11: Пароль должен содержать минимум один специальный символ."
-            logger.warning(f"Неуспешный запрос. Логин: '{login}', Пароль: {masked_pwd}. Ошибка: {error_msg}")
+            error_msg = "Пароль должен содержать минимум один специальный символ."
+            logger.error(f"Отказано в регистрации. Логин: '{login}'. Причина: {error_msg}")
             return False, error_msg
 
         # --- УСПЕШНАЯ РЕГИСТРАЦИЯ ---
-        logger.info(f"Успешный запрос. Логин: '{login}', Пароль: {masked_pwd}, Результат: Регистрация успешна.")
+        # INFO используется для подтверждения штатного, успешного выполнения операции
+        logger.info(f"Успешная регистрация пользователя. Логин: '{login}'.")
         return True, ""
 
     except Exception as e:
-        # В случае непредвиденного сбоя логируем трассировку стека исключений (traceback)
+        # CRITICAL используется для непредвиденных сбоев в самом коде программы.
+        # Это позволяет в логах четко отделить "ошибку ввода пользователя" (ERROR) 
+        # от "поломки системы" (CRITICAL), требующей вмешательства разработчика.
         tb_str = traceback.format_exc()
-        error_msg = f"Критический сбой системы при валидации: {str(e)}"
-        logger.critical(f"Неуспешный запрос. Логин: '{login}', Пароль: {masked_pwd}.\nТекст ошибки: {error_msg}\nТрассировка стека:\n{tb_str}")
+        error_msg = f"Внутренняя ошибка системы при валидации: {str(e)}"
+        logger.critical(
+            f"Сбой обработки запроса. Логин: '{login}'.\n"
+            f"Текст ошибки: {error_msg}\n"
+            f"Трассировка стека:\n{tb_str}"
+        )
         return False, error_msg
 
 
